@@ -1,10 +1,4 @@
-"""
-資料載入和處理模組
-Author: Your Name
-Date: 2024
 
-這個模組負責載入和處理TX期貨的OHLCV資料
-"""
 
 import streamlit as st
 import pandas as pd
