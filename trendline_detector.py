@@ -10,6 +10,8 @@ import pandas as pd
 import numpy as np
 from typing import List, Tuple, Dict, Optional
 from datetime import datetime
+MIN_TOUCHES = 3
+MIN_BREAKOUT_PCT = 0.02
 
 
 class TrendlineBreakoutDetector:
@@ -211,34 +213,33 @@ class TrendlineBreakoutDetector:
         
         return base_score + time_bonus - slope_penalty
     
-    def check_breakouts(self, df: pd.DataFrame, support_lines: List[Dict], 
-                       resistance_lines: List[Dict]) -> List[Dict]:
-        """
-        檢查最近的K棒是否突破趨勢線
-        
-        Args:
-            df: 原始OHLCV資料
-            support_lines: 支撐線列表
-            resistance_lines: 阻力線列表
-            
-        Returns:
-            List of breakout dictionaries
-        """
-        if len(df) == 0:
+    def check_breakouts(self, df: pd.DataFrame,
+                    support_lines: List[Dict],
+                    resistance_lines: List[Dict]) -> List[Dict]:
+
+        if df.empty:
             return []
-        
+
         breakouts = []
         latest_bar = df.iloc[-1]
         latest_index = len(df) - 1
-        
-        # 檢查阻力突破 (收盤價超過阻力線)
+
+        # ========= 阻力突破 =========
         for resistance in resistance_lines:
+
+            if resistance['touches'] < MIN_TOUCHES:
+                continue
+
             resistance_price = self.get_line_value(
-                resistance['slope'], 
-                resistance['intercept'], 
+                resistance['slope'],
+                resistance['intercept'],
                 latest_index
             )
-            
+
+            breakout_pct = (latest_bar['close'] - resistance_price) / resistance_price
+            if breakout_pct < MIN_BREAKOUT_PCT:
+                continue
+
             if latest_bar['close'] > resistance_price * (1 + self.breakout_threshold):
                 breakouts.append({
                     'datetime': latest_bar['datetime'],
@@ -248,17 +249,25 @@ class TrendlineBreakoutDetector:
                     'trendline_points': resistance['points'],
                     'strength': resistance['touches'],
                     'strength_score': resistance['strength_score'],
-                    'breakout_magnitude': (latest_bar['close'] - resistance_price) / resistance_price
+                    'breakout_magnitude': breakout_pct
                 })
-        
-        # 檢查支撐跌破 (收盤價低於支撐線)
+
+        # ========= 支撐跌破 =========
         for support in support_lines:
+
+            if support['touches'] < MIN_TOUCHES:
+                continue
+
             support_price = self.get_line_value(
-                support['slope'], 
-                support['intercept'], 
+                support['slope'],
+                support['intercept'],
                 latest_index
             )
-            
+
+            breakout_pct = (support_price - latest_bar['close']) / support_price
+            if breakout_pct < MIN_BREAKOUT_PCT:
+                continue
+
             if latest_bar['close'] < support_price * (1 - self.breakout_threshold):
                 breakouts.append({
                     'datetime': latest_bar['datetime'],
@@ -268,13 +277,23 @@ class TrendlineBreakoutDetector:
                     'trendline_points': support['points'],
                     'strength': support['touches'],
                     'strength_score': support['strength_score'],
-                    'breakout_magnitude': (support_price - latest_bar['close']) / support_price
+                    'breakout_magnitude': breakout_pct
                 })
-        
-        # 按突破幅度排序
-        breakouts.sort(key=lambda x: x['breakout_magnitude'], reverse=True)
-        
-        return breakouts
+
+        # ========= 同一根 K 棒只留最強 =========
+        from collections import defaultdict
+
+        grouped = defaultdict(list)
+        for b in breakouts:
+            grouped[b['datetime']].append(b)
+
+        filtered = []
+        for items in grouped.values():
+            filtered.append(max(items, key=lambda x: x['breakout_magnitude']))
+
+        return filtered
+
+
     
     def analyze(self, df: pd.DataFrame) -> Dict:
         """
