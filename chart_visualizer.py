@@ -1,10 +1,4 @@
-"""
-圖表視覺化模組
-Author: Your Name
-Date: 2024
 
-這個模組負責創建各種交易圖表和視覺化功能
-"""
 
 import pandas as pd
 import numpy as np
