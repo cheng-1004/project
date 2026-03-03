@@ -1,10 +1,4 @@
-"""
-TX期貨交易儀表板主應用程式
-Author: Your Name
-Date: 2024
 
-這是主要的Streamlit應用程式，整合所有模組功能
-"""
 
 import streamlit as st
 import pandas as pd
