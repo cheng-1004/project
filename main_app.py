@@ -39,48 +39,41 @@ class TradingDashboard:
 
             if st.button("載入/重新整理資料", type="primary"):
                 try:
-                    # 1. 使用 Big5 編碼讀取，並處理不固定空格
-                    # sep='\s+' 會自動處理一個或多個空格/Tab
-                    df = pd.read_csv("output/kline_60min.txt", sep='\s+', encoding='big5')
+                    # 1. 讀取與基本清理
+                    df_raw = pd.read_csv("output/kline_60min.txt", sep='\s+', encoding='big5')
+                    df_raw.columns = [c.strip() for c in df_raw.columns]
                     
-                    # 2. 強制清理欄位名稱（防止標題抓到不可見字元）
-                    df.columns = [c.strip() for c in df.columns]
+                    column_map = {'日期': 'date', '時間': 'time', '開盤': 'open', '最高': 'high', '最低': 'low', '收盤': 'close', '成交量': 'volume'}
+                    df_raw = df_raw.rename(columns=column_map)
+                    df_raw['datetime'] = pd.to_datetime(df_raw['date'] + ' ' + df_raw['time'], errors='coerce')
                     
-                    # 3. 欄位翻譯對照表 (確保與你截圖中的中文標題一致)
-                    column_map = {
-                        '日期': 'date', 
-                        '時間': 'time', 
-                        '開盤': 'open', 
-                        '最高': 'high', 
-                        '最低': 'low', 
-                        '收盤': 'close', 
-                        '成交量': 'volume'
-                    }
-                    df = df.rename(columns=column_map)
+                    for col in ['open', 'high', 'low', 'close', 'volume']:
+                        df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce')
                     
-                    # 4. 建立時間戳記 (合併日期與時間)
-                    df['datetime'] = pd.to_datetime(df['date'] + ' ' + df['time'], errors='coerce')
-                    
-                    # 5. 確保 OHLC 數值正確
-                    cols_to_fix = ['open', 'high', 'low', 'close', 'volume']
-                    for col in cols_to_fix:
-                        if col in df.columns:
-                            df[col] = pd.to_numeric(df[col], errors='coerce')
-                    
-                    # 6. 剔除有無效資料的列
-                    df = df.dropna(subset=['datetime', 'open', 'high', 'low', 'close']).reset_index(drop=True)
+                    df_raw = df_raw.dropna(subset=['datetime', 'open', 'high', 'low', 'close'])
 
-                    if len(df) > 0:
-                        st.session_state.data = df
-                        # 執行偵測與期望值計算
-                        analysis = self.detector.analyze(df, swing_window=window, min_touches=min_touches)
-                        analysis['ev_stats'] = self.calculate_ev(df, analysis.get('breakouts', []), tp_ticks, sl_ticks, cost)
+                    if len(df_raw) > 0:
+                        # 🌟 核心修正：只取最後 200 筆，並進行「深層複製」與「索引重置」
+                        # 這會切斷與過去「遠古高點」的所有聯繫
+                        df_final = df_raw.tail(200).copy().reset_index(drop=True)
                         
+                        # 2. 執行分析
+                        # 確保 detector 拿到的 dataframe 索引是從 0 到 199
+                        analysis = self.detector.analyze(df_final, swing_window=window, min_touches=min_touches)
+                        
+                        # 3. 計算期望值
+                        # 如果分析結果裡有 breakouts，計算才會有效
+                        ev_results = self.calculate_ev(df_final, analysis.get('breakouts', []), tp_ticks, sl_ticks, cost)
+                        analysis['ev_stats'] = ev_results
+                        
+                        # 4. 更新狀態
+                        st.session_state.data = df_final
                         st.session_state.analysis = analysis
-                        st.success(f"✅ 成功載入 {len(df)} 筆資料")
+                        
+                        st.success(f"✅ 局部分析完成！目前偵測到 {len(analysis.get('breakouts', []))} 個突破點")
                         st.rerun()
                     else:
-                        st.error("❌ 資料讀取成功但清理後為空，請檢查標題列是否正確。")
+                        st.error("❌ 資料清理後為空")
 
                 except Exception as e:
                     st.error(f"❌ 載入失敗：{str(e)}")
