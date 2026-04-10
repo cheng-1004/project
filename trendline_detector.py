@@ -295,22 +295,17 @@ class TrendlineBreakoutDetector:
 
 
     
-    def analyze(self, df: pd.DataFrame) -> Dict:
+    def analyze(self, df: pd.DataFrame, swing_window: int = None, min_touches: int = None) -> Dict:
         """
-        主要分析函數 - 執行完整的趨勢線和突破點分析
-        
-        Args:
-            df: DataFrame with columns ['datetime', 'open', 'high', 'low', 'close', 'volume']
+        主要分析函數 - 支援從外部傳入參數
+        """
+        # --- 新增：動態更新參數 ---
+        if swing_window is not None:
+            self.swing_window = swing_window
+        if min_touches is not None:
+            self.min_touches = min_touches
             
-        Returns:
-            Dictionary containing:
-            - swing_points: Dict with 'highs' and 'lows'
-            - support_lines: List of support trendlines
-            - resistance_lines: List of resistance trendlines  
-            - breakouts: List of detected breakouts
-            - summary: Analysis summary statistics
-        """
-        # 驗證輸入資料
+        # 驗證輸入資料 (以下維持你原本的邏輯)
         required_columns = ['datetime', 'open', 'high', 'low', 'close', 'volume']
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
@@ -319,7 +314,6 @@ class TrendlineBreakoutDetector:
         if df.empty:
             return self._empty_analysis_result()
         
-        # 確保資料按時間排序
         df = df.sort_values('datetime').reset_index(drop=True)
         
         # 1. 找出搖擺點
@@ -330,8 +324,8 @@ class TrendlineBreakoutDetector:
         resistance_lines = self.find_trendlines(swing_points['highs'])
         
         # 3. 過濾出正確方向的趨勢線
-        support_lines = [line for line in support_lines if line['slope'] >= -0.1]  # 允許略微下降的支撐線
-        resistance_lines = [line for line in resistance_lines if line['slope'] <= 0.1]  # 允許略微上升的阻力線
+        support_lines = [line for line in support_lines if line['slope'] >= -0.1]
+        resistance_lines = [line for line in resistance_lines if line['slope'] <= 0.1]
         
         # 4. 檢查突破點
         breakouts = self.check_breakouts(df, support_lines, resistance_lines)
